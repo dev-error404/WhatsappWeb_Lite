@@ -1,0 +1,21 @@
+# Build folders
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Executables and local installer files
+*.exe
+*.msi
+*.pdb
+*.log
+
+# Internal release tools & private setup folders
+release.ps1
+installer/
