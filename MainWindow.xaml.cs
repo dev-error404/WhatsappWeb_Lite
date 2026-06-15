@@ -20,6 +20,7 @@ namespace WhatsAppWebDesktop
         private SystemTray.NotifyIcon? _notifyIcon;
         private bool _isExiting = false;
         private bool _shownBalloonHelp = false;
+        private string? _pendingProtocolUrl;
 
         public MainWindow()
         {
@@ -55,7 +56,13 @@ namespace WhatsAppWebDesktop
                 await CheckForUpdatesAsync();
 
                 // Navegar a WhatsApp Web
-                WvWhatsApp.CoreWebView2.Navigate("https://web.whatsapp.com/");
+                string targetUrl = "https://web.whatsapp.com/";
+                if (!string.IsNullOrEmpty(_pendingProtocolUrl))
+                {
+                    targetUrl = _pendingProtocolUrl;
+                    _pendingProtocolUrl = null;
+                }
+                WvWhatsApp.CoreWebView2.Navigate(targetUrl);
 
                 // Inicializar la bandeja del sistema
                 InitializeTrayIcon();
@@ -287,7 +294,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.3");
+                                var currentVersion = new Version("1.0.4");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -466,6 +473,30 @@ namespace WhatsAppWebDesktop
             bitmap.Freeze();
             return bitmap;
         }
+
+        public void HandleArguments(string[] args)
+        {
+            string? whatsappUrl = args.FirstOrDefault(a => a.StartsWith("whatsapp://", StringComparison.OrdinalIgnoreCase));
+            
+            if (whatsappUrl != null)
+            {
+                string webUrl = whatsappUrl;
+                if (webUrl.StartsWith("whatsapp://", StringComparison.OrdinalIgnoreCase))
+                {
+                    webUrl = "https://web.whatsapp.com/" + webUrl.Substring("whatsapp://".Length);
+                }
+
+                if (WvWhatsApp?.CoreWebView2 != null)
+                {
+                    RestoreWindow();
+                    WvWhatsApp.CoreWebView2.Navigate(webUrl);
+                }
+                else
+                {
+                    _pendingProtocolUrl = webUrl;
+                }
+            }
+        }
     }
 
     public class GitHubRelease
@@ -481,6 +512,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 
