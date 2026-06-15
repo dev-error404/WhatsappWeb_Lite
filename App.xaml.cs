@@ -64,7 +64,7 @@ namespace WhatsAppWebDesktop
                     client.Connect(1000); // Esperar 1 segundo máximo
                     using (var writer = new StreamWriter(client))
                     {
-                        writer.Write(string.Join(" ", args));
+                        writer.Write(string.Join("|", args));
                         writer.Flush();
                     }
                 }
@@ -92,7 +92,7 @@ namespace WhatsAppWebDesktop
                                     {
                                         if (System.Windows.Application.Current.MainWindow is MainWindow mainWin)
                                         {
-                                            mainWin.HandleArguments(argsStr.Split(' '));
+                                            mainWin.HandleArguments(argsStr.Split('|'));
                                         }
                                     }));
                                 }
