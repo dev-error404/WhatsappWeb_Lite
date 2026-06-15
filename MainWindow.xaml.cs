@@ -156,11 +156,22 @@ namespace WhatsAppWebDesktop
             _notifyIcon.ContextMenuStrip = contextMenu;
         }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
         private void RestoreWindow()
         {
             this.Show();
             this.WindowState = WindowState.Normal;
             this.Activate();
+
+            try
+            {
+                var helper = new System.Windows.Interop.WindowInteropHelper(this);
+                SetForegroundWindow(helper.Handle);
+            }
+            catch { }
         }
 
         private void OnWindowClosing(object? sender, CancelEventArgs e)
@@ -294,7 +305,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.5");
+                                var currentVersion = new Version("1.0.6");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -512,6 +523,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 

@@ -1,6 +1,8 @@
 using System;
 using System.IO;
-using System.IO.Pipes;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,17 +15,27 @@ namespace WhatsAppWebDesktop
     /// </summary>
     public partial class App : System.Windows.Application
     {
-        private static Mutex? _mutex;
-        private const string MutexName = "Global\\WhatsAppWebDesktopSingleInstanceMutex";
-        private const string PipeName = "WhatsAppLite_IPC_Pipe";
+        private static TcpListener? _listener;
+        private const int IpcPort = 50304;
 
         protected override void OnStartup(StartupEventArgs e)
         {
-            _mutex = new Mutex(true, MutexName, out bool isNewInstance);
+            bool isNewInstance = false;
+            try
+            {
+                _listener = new TcpListener(IPAddress.Loopback, IpcPort);
+                _listener.Start();
+                isNewInstance = true;
+            }
+            catch (SocketException)
+            {
+                // El puerto ya está en uso, significa que ya hay una instancia activa
+                isNewInstance = false;
+            }
 
             if (!isNewInstance)
             {
-                // Si ya hay una instancia en ejecución, enviarle los argumentos por la tubería
+                // Si ya hay una instancia en ejecución, enviarle los argumentos por TCP
                 if (e.Args.Length > 0)
                 {
                     SendArgsToRunningInstance(e.Args);
@@ -37,8 +49,8 @@ namespace WhatsAppWebDesktop
             // Crear la ventana principal de forma manual
             var mainWindow = new MainWindow();
 
-            // Iniciar el servidor IPC
-            StartPipeServer();
+            // Iniciar la escucha de argumentos en segundo plano
+            StartSocketServer();
 
             // Si se inicia automáticamente con Windows, mantenemos la ventana oculta en segundo plano.
             if (e.Args.Contains("--startup"))
@@ -59,10 +71,11 @@ namespace WhatsAppWebDesktop
         {
             try
             {
-                using (var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out))
+                using (var client = new TcpClient())
                 {
-                    client.Connect(1000); // Esperar 1 segundo máximo
-                    using (var writer = new StreamWriter(client))
+                    client.Connect(IPAddress.Loopback, IpcPort);
+                    using (var stream = client.GetStream())
+                    using (var writer = new StreamWriter(stream, Encoding.UTF8))
                     {
                         writer.Write(string.Join("|", args));
                         writer.Flush();
@@ -72,53 +85,56 @@ namespace WhatsAppWebDesktop
             catch { }
         }
 
-        private static void StartPipeServer()
+        private static void StartSocketServer()
         {
-            Task.Run(() =>
+            Task.Run(async () =>
             {
-                while (true)
+                while (_listener != null)
                 {
                     try
                     {
-                        using (var server = new NamedPipeServerStream(PipeName, PipeDirection.In))
-                        {
-                            server.WaitForConnection();
-                            using (var reader = new StreamReader(server))
-                            {
-                                string argsStr = reader.ReadToEnd();
-                                if (!string.IsNullOrEmpty(argsStr))
-                                {
-                                    System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
-                                    {
-                                        if (System.Windows.Application.Current.MainWindow is MainWindow mainWin)
-                                        {
-                                            mainWin.HandleArguments(argsStr.Split('|'));
-                                        }
-                                    }));
-                                }
-                            }
-                        }
+                        var client = await _listener.AcceptTcpClientAsync();
+                        _ = Task.Run(() => HandleClientConnection(client));
                     }
                     catch
                     {
-                        Thread.Sleep(1000);
+                        break;
                     }
                 }
             });
         }
 
+        private static void HandleClientConnection(TcpClient client)
+        {
+            try
+            {
+                using (client)
+                using (var stream = client.GetStream())
+                using (var reader = new StreamReader(stream, Encoding.UTF8))
+                {
+                    string argsStr = reader.ReadToEnd();
+                    if (!string.IsNullOrEmpty(argsStr))
+                    {
+                        System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            if (System.Windows.Application.Current.MainWindow is MainWindow mainWin)
+                            {
+                                mainWin.HandleArguments(argsStr.Split('|'));
+                            }
+                        }));
+                    }
+                }
+            }
+            catch { }
+        }
+
         protected override void OnExit(ExitEventArgs e)
         {
-            if (_mutex != null)
+            try
             {
-                try
-                {
-                    _mutex.ReleaseMutex();
-                }
-                catch (ObjectDisposedException) { }
-                catch (ApplicationException) { }
-                _mutex.Dispose();
+                _listener?.Stop();
             }
+            catch { }
             base.OnExit(e);
         }
     }
