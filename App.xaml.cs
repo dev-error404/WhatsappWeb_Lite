@@ -16,26 +16,41 @@ namespace WhatsAppWebDesktop
     public partial class App : System.Windows.Application
     {
         private static TcpListener? _listener;
-        private const int IpcPort = 50304;
+        private const int IpcPort = 49600;
+
+        private static void LogMessage(string message)
+        {
+            try
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string folder = Path.Combine(appData, "WhatsAppWebDesktop");
+                if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+                string path = Path.Combine(folder, "ipc.log");
+                File.AppendAllText(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}\n");
+            }
+            catch { }
+        }
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            LogMessage("App OnStartup triggered. Args: " + string.Join(" ", e.Args));
             bool isNewInstance = false;
             try
             {
                 _listener = new TcpListener(IPAddress.Loopback, IpcPort);
                 _listener.Start();
                 isNewInstance = true;
+                LogMessage("Socket listener started successfully on port " + IpcPort);
             }
-            catch (SocketException)
+            catch (Exception ex)
             {
-                // El puerto ya está en uso, significa que ya hay una instancia activa
                 isNewInstance = false;
+                LogMessage("Socket bind failed or port in use: " + ex.Message);
             }
 
             if (!isNewInstance)
             {
-                // Si ya hay una instancia en ejecución, enviarle los argumentos por TCP
+                LogMessage("This is not the first instance. Forwarding args and shutting down.");
                 if (e.Args.Length > 0)
                 {
                     SendArgsToRunningInstance(e.Args);
@@ -48,6 +63,8 @@ namespace WhatsAppWebDesktop
 
             // Crear la ventana principal de forma manual
             var mainWindow = new MainWindow();
+            System.Windows.Application.Current.MainWindow = mainWindow;
+            LogMessage("MainWindow instantiated.");
 
             // Iniciar la escucha de argumentos en segundo plano
             StartSocketServer();
@@ -55,13 +72,16 @@ namespace WhatsAppWebDesktop
             // Si se inicia automáticamente con Windows, mantenemos la ventana oculta en segundo plano.
             if (e.Args.Contains("--startup"))
             {
+                LogMessage("App started in background mode (--startup).");
                 this.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             }
             else
             {
+                LogMessage("Showing MainWindow.");
                 mainWindow.Show();
                 if (e.Args.Length > 0)
                 {
+                    LogMessage("Handling initial startup arguments.");
                     mainWindow.HandleArguments(e.Args);
                 }
             }
@@ -71,6 +91,7 @@ namespace WhatsAppWebDesktop
         {
             try
             {
+                LogMessage("Connecting to running instance to send args: " + string.Join("|", args));
                 using (var client = new TcpClient())
                 {
                     client.Connect(IPAddress.Loopback, IpcPort);
@@ -81,12 +102,17 @@ namespace WhatsAppWebDesktop
                         writer.Flush();
                     }
                 }
+                LogMessage("Args sent successfully.");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogMessage("Error sending args to running instance: " + ex.Message);
+            }
         }
 
         private static void StartSocketServer()
         {
+            LogMessage("Starting socket server thread.");
             Task.Run(async () =>
             {
                 while (_listener != null)
@@ -94,10 +120,12 @@ namespace WhatsAppWebDesktop
                     try
                     {
                         var client = await _listener.AcceptTcpClientAsync();
+                        LogMessage("Client TCP connection accepted.");
                         _ = Task.Run(() => HandleClientConnection(client));
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        LogMessage("Socket listener accept loop failed/stopped: " + ex.Message);
                         break;
                     }
                 }
@@ -113,11 +141,14 @@ namespace WhatsAppWebDesktop
                 using (var reader = new StreamReader(stream, Encoding.UTF8))
                 {
                     string argsStr = reader.ReadToEnd();
+                    LogMessage("Received args via TCP: " + argsStr);
                     if (!string.IsNullOrEmpty(argsStr))
                     {
                         System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                         {
-                            if (System.Windows.Application.Current.MainWindow is MainWindow mainWin)
+                            var mainWin = System.Windows.Application.Current.MainWindow as MainWindow;
+                            LogMessage("MainWindow found: " + (mainWin != null));
+                            if (mainWin != null)
                             {
                                 mainWin.HandleArguments(argsStr.Split('|'));
                             }
@@ -125,11 +156,15 @@ namespace WhatsAppWebDesktop
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogMessage("Error handling client connection: " + ex.Message);
+            }
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
+            LogMessage("App exiting.");
             try
             {
                 _listener?.Stop();
