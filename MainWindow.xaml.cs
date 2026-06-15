@@ -46,6 +46,7 @@ namespace WhatsAppWebDesktop
                 // Configurar eventos después de inicializar
                 WvWhatsApp.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
                 WvWhatsApp.NavigationCompleted += OnNavigationCompleted;
+                WvWhatsApp.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
 
                 // Modificar el User-Agent para hacerse pasar por Google Chrome en Windows
                 WvWhatsApp.CoreWebView2.Settings.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -286,7 +287,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.2");
+                                var currentVersion = new Version("1.0.3");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -373,6 +374,98 @@ namespace WhatsAppWebDesktop
                 });
             }
         }
+
+        private void OnDocumentTitleChanged(object? sender, object e)
+        {
+            if (WvWhatsApp?.CoreWebView2 == null) return;
+
+            string title = WvWhatsApp.CoreWebView2.DocumentTitle;
+            int unreadCount = 0;
+
+            if (!string.IsNullOrEmpty(title))
+            {
+                int openParens = title.IndexOf('(');
+                int closeParens = title.IndexOf(')');
+                if (openParens == 0 && closeParens > 0)
+                {
+                    string countStr = title.Substring(1, closeParens - 1);
+                    if (int.TryParse(countStr, out int parsedCount))
+                    {
+                        unreadCount = parsedCount;
+                    }
+                }
+            }
+
+            UpdateUnreadBadge(unreadCount);
+        }
+
+        private void UpdateUnreadBadge(int count)
+        {
+            // Actualizar el título de la ventana y el texto visual
+            string version = "1.0.2"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string baseTitle = $"WhatsApp Lite v{version}";
+            string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
+            
+            this.Title = displayTitle;
+            if (TxtTitle != null)
+            {
+                TxtTitle.Text = displayTitle;
+            }
+
+            // Actualizar el overlay del icono en la barra de tareas
+            try
+            {
+                this.TaskbarItemInfo ??= new System.Windows.Shell.TaskbarItemInfo();
+                this.TaskbarItemInfo.Overlay = CreateBadgeImage(count);
+            }
+            catch { }
+
+            // Actualizar el texto del tooltip en el Tray Icon si está activo
+            if (_notifyIcon != null)
+            {
+                try
+                {
+                    _notifyIcon.Text = count > 0 ? $"WhatsApp Lite ({count} mensajes)" : "WhatsApp Lite";
+                }
+                catch { }
+            }
+        }
+
+        private ImageSource? CreateBadgeImage(int count)
+        {
+            if (count <= 0) return null;
+
+            int size = 16;
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+            var visual = new DrawingVisual();
+            using (var context = visual.RenderOpen())
+            {
+                // Círculo rojo de fondo
+                var brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 67, 54)); // Rojo
+                var pen = new System.Windows.Media.Pen(new SolidColorBrush(System.Windows.Media.Colors.White), 1);
+                context.DrawEllipse(brush, pen, new System.Windows.Point(size / 2.0, size / 2.0), size / 2.0 - 0.5, size / 2.0 - 0.5);
+
+                // Texto del número
+                string textStr = count > 99 ? "99+" : count.ToString();
+                var formattedText = new FormattedText(
+                    textStr,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Windows.FlowDirection.LeftToRight,
+                    new Typeface(new System.Windows.Media.FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+                    textStr.Length > 2 ? 7.0 : 8.5,
+                    System.Windows.Media.Brushes.White,
+                    VisualTreeHelper.GetDpi(this).PixelsPerDip
+                );
+
+                double x = (size - formattedText.Width) / 2.0;
+                double y = (size - formattedText.Height) / 2.0;
+                context.DrawText(formattedText, new System.Windows.Point(x, y));
+            }
+
+            bitmap.Render(visual);
+            bitmap.Freeze();
+            return bitmap;
+        }
     }
 
     public class GitHubRelease
@@ -388,6 +481,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 
