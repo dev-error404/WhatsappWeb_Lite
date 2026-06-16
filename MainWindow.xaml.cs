@@ -231,6 +231,21 @@ namespace WhatsAppWebDesktop
             }
         }
 
+        private void OnDownloadsClick(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (WvWhatsApp?.CoreWebView2 != null)
+                {
+                    WvWhatsApp.CoreWebView2.OpenDefaultDownloadDialog();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"No se pudo abrir el menú de descargas: {ex.Message}", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void OnSettingsClick(object sender, RoutedEventArgs e)
         {
             try
@@ -305,7 +320,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.4");
+                                var currentVersion = new Version("1.0.5");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -523,6 +538,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 
