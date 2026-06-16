@@ -1,53 +1,63 @@
-<img src="logo-whatsapp-png-46068.png" width="90" height="90" align="right" alt="WhatsApp Lite Logo" />
-
 # WhatsApp Lite
 
-Un contenedor (wrapper) de escritorio ultra ligero y de alto rendimiento para [WhatsApp Web](https://web.whatsapp.com) desarrollado en C# y WPF utilizando el motor nativo Microsoft Edge WebView2 (Chromium).
+Un contenedor de escritorio ultra ligero para **WhatsApp Web** desarrollado en C# y WPF que utiliza el motor nativo **Microsoft Edge WebView2 (Chromium)**.
 
-**WhatsApp Lite** se compila en un ejecutable autónomo de apenas **1.2 MB**, consume una fracción de la memoria RAM de clientes pesados basados en Electron y está diseñado para ofrecer una experiencia fluida, evitando los retrasos al escribir y en llamadas que suelen ocurrir en el cliente oficial de la Microsoft Store.
-
----
-
-## Características Principales
-
-- ⚡ **Ultra ligero**: El ejecutable del programa ocupa solo 1.2 MB.
-- 🚀 **Motor Chromium**: Utiliza WebView2 (el motor de Microsoft Edge basado en Chromium), garantizando máxima compatibilidad y velocidad.
-- 🎮 **Aceleración por hardware desactivada**: Configurado con la directiva de renderizado `--disable-gpu` por defecto para evitar parpadeos de pantalla o incompatibilidades de controladores gráficos.
-- 📱 **Camuflaje de dispositivo**: Modifica internamente el `User-Agent` para identificarse limpiamente como **Google Chrome (Windows)** en la lista de dispositivos vinculados de tu teléfono celular.
-- 🔑 **Sesión persistente**: Guarda de forma segura las cookies y la base de datos local en `%APPDATA%\WhatsAppWebDesktop\User Data` para que solo tengas que escanear el código QR una vez.
-- 🔗 **Gestión inteligente de enlaces**: Los enlaces externos de Internet que presiones en los chats se abrirán automáticamente en tu navegador predeterminado (como Chrome o Edge) para no perder tu pantalla de WhatsApp.
-- 📥 **Actualizaciones automáticas**: Al abrirse, la aplicación consulta asíncronamente los releases de GitHub. Si hay una versión superior disponible, te ofrecerá descargarla e instalarla automáticamente al instante.
-- ⚙️ **Inicio automático configurable**: Incorpora un botón de configuración (engranaje) en la barra de título donde puedes activar o desactivar el inicio automático con Windows. Al arrancar con el sistema, se inicia minimizado en segundo plano.
-- 🔔 **Bandeja del sistema (Tray)**: Al hacer clic en cerrar ($\times$), la aplicación se oculta al lado del reloj del sistema. Sigue activa en segundo plano para recibir notificaciones y se restaura rápidamente haciendo doble clic sobre su icono.
+A diferencia del cliente oficial de la Microsoft Store (que suele sufrir de retardos en la escritura y llamadas) y de los wrappers tradicionales basados en Electron (que consumen cientos de megabytes de memoria RAM), **WhatsApp Lite** compila en un único ejecutable de solo **1.2 MB** y está optimizado para consumir el mínimo de recursos del sistema.
 
 ---
 
-## Compilación Manual
+## ¿Por qué WhatsApp Lite?
 
-### Requisitos previos
-- **.NET 10.0 SDK** (o superior)
-- **WebView2 Runtime** (preinstalado en Windows 10 y 11)
+La aplicación oficial de escritorio de WhatsApp y los contenedores web habituales tienen dos problemas principales: alto consumo de recursos y lentitud en equipos de gama media. Este proyecto soluciona ambos problemas encapsulando la web oficial dentro de WebView2 de Microsoft, aprovechando la aceleración y compatibilidad de Chromium sin la sobrecarga de un navegador completo independiente.
 
-### Pasos para compilar la aplicación
+---
 
-Para generar el ejecutable optimizado en un solo archivo, abre la terminal en la carpeta raíz del proyecto y ejecuta:
+## Características Destacadas
+
+### Integración con el Sistema (Windows)
+* **Asociación del protocolo `whatsapp://`**: Soporta enlaces de redirección externa (como `api.whatsapp.com/send` o `wa.me`). Al hacer clic en un enlace de chat en navegadores externos, Windows sugerirá abrirlo con WhatsApp Lite y lo enviará directamente al chat de la instancia activa.
+* **Control de Instancia Única vía Sockets TCP**: Si intentas abrir otra instancia de la aplicación (o haces clic en un enlace web `whatsapp://`), la nueva instancia le transfiere los argumentos de forma segura a la principal a través de un puerto local de comunicación (`49600`), levantando la ventana y navegando al chat sin abrir ventanas repetidas.
+* **Minimizar a la Bandeja del Sistema (Tray)**: Al cerrar la ventana, la aplicación se oculta al área de notificación al lado del reloj. Sigue recibiendo notificaciones en segundo plano y se restaura al instante haciendo doble clic.
+* **Inicio Automático Configurable**: Permite habilitar desde el menú de opciones que el programa inicie automáticamente junto con Windows de forma oculta en segundo plano.
+
+### Experiencia de Usuario (UX)
+* **Contador de Mensajes Pendientes (Badge)**: Dibuja dinámicamente un indicador con el conteo de mensajes no leídos sobre el icono del programa en la barra de tareas y actualiza el texto de la bandeja del sistema.
+* **Acceso Directo a Descargas**: Incluye un botón dedicado en la barra de título que despliega el historial y gestor de descargas nativo del WebView2, evitando tener que usar atajos de teclado complejos.
+* **Ventana Oscura Sin Bordes**: Interfaz moderna integrada con el sistema operativo que incluye controles personalizados y soporte nativo para los Snap Layouts de Windows 11.
+* **Gestión de Enlaces Externos**: Todos los enlaces web externos compartidos en los chats se abren automáticamente en el navegador predeterminado del sistema operativo para no interrumpir tu sesión de chat.
+
+### Optimización y Privacidad
+* **Aceleración por Hardware Desactivada**: Configurado con renderizado seguro por CPU (`--disable-gpu`) para evitar parpadeos visuales típicos de WebView2.
+* **Sesión Persistente**: Los datos de perfil, cookies de inicio de sesión y caché se almacenan localmente en `%APPDATA%\WhatsAppWebDesktop\User Data`.
+* **Identificación Limpia (User-Agent)**: Se identifica ante los servidores de WhatsApp como **Google Chrome (Windows)**, evitando restricciones de acceso y apareciendo de forma clara en la lista de dispositivos vinculados en tu móvil.
+* **Actualización Asíncrona**: Consulta periódica a la API de GitHub para verificar nuevos lanzamientos publicados y permite actualizar el ejecutable de forma automatizada.
+
+---
+
+## Compilación e Instalación
+
+### Requisitos
+* .NET 10.0 SDK o superior.
+* Microsoft Edge WebView2 Runtime (incluido por defecto en Windows 10 y 11).
+
+### Compilar desde la consola
+Para realizar una compilación optimizada en un único archivo ejecutable libre de dependencias externas:
 
 ```powershell
 dotnet publish -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=false
 ```
 
-El archivo ejecutable compilado se generará en la siguiente ruta:
+El ejecutable resultante estará en la carpeta:
 `bin\Release\net10.0-windows\win-x64\publish\WhatsAppWebDesktop.exe`
 
 ---
 
 ## Descargo de Responsabilidad (Aviso Legal)
 
-> [!IMPORTANT]
+> [!IMPORTANT]  
 > **Este es un cliente no oficial de código abierto.**
 > 
-> **WhatsApp Lite** es un proyecto independiente de desarrollo de software y no está afiliado, autorizado, patrocinado, respaldado ni conectado de ninguna manera con **WhatsApp LLC**, **Meta Platforms, Inc.** ni ninguna de sus filiales o subsidiarias. El sitio oficial de WhatsApp se encuentra en [https://www.whatsapp.com](https://www.whatsapp.com).
+> **WhatsApp Lite** es un proyecto de desarrollo independiente y no tiene afiliación, patrocinio, autorización ni ningún tipo de vínculo comercial con **WhatsApp LLC**, **Meta Platforms, Inc.** o cualquiera de sus filiales.
 > 
-> - **Sin modificaciones en el servidor**: Esta aplicación no modifica, intercepta, descifra ni altera los servidores o las comunicaciones de la plataforma de mensajería.
-> - **Contenedor Web**: Funciona exclusivamente como un visor (wrapper) de la página web oficial y sin modificaciones de [WhatsApp Web](https://web.whatsapp.com/).
-> - **Cumplimiento**: El software se proporciona "tal cual" bajo la licencia MIT. Es responsabilidad del usuario final hacer un uso de esta herramienta conforme a las Condiciones de Servicio de la plataforma oficial.
+> - **Sin alteraciones de servidor**: Este software actúa estrictamente como un visor web aislado para la plataforma oficial [WhatsApp Web](https://web.whatsapp.com/). No intercepta, altera ni almacena mensajes.
+> - **Responsabilidad**: La aplicación se distribuye bajo la licencia MIT. El usuario es responsable de utilizar esta herramienta de conformidad con las condiciones y términos del servicio oficial de WhatsApp.
