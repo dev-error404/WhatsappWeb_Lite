@@ -156,6 +156,98 @@ namespace WhatsAppWebDesktop
             _notifyIcon.ContextMenuStrip = contextMenu;
         }
 
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            try
+            {
+                var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                var source = System.Windows.Interop.HwndSource.FromHwnd(handle);
+                source?.AddHook(WindowProc);
+            }
+            catch { }
+        }
+
+        private IntPtr WindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == WM_GETMINMAXINFO)
+            {
+                WmGetMinMaxInfo(hwnd, lParam);
+                handled = true;
+            }
+            return IntPtr.Zero;
+        }
+
+        private static void WmGetMinMaxInfo(IntPtr hwnd, IntPtr lParam)
+        {
+            try
+            {
+                var mmi = System.Runtime.InteropServices.Marshal.PtrToStructure<MINMAXINFO>(lParam);
+                IntPtr monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                if (monitor != IntPtr.Zero)
+                {
+                    var monitorInfo = new MONITORINFO();
+                    monitorInfo.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(MONITORINFO));
+                    if (GetMonitorInfo(monitor, ref monitorInfo))
+                    {
+                        RECT rcWorkArea = monitorInfo.rcWork;
+                        RECT rcMonitorArea = monitorInfo.rcMonitor;
+
+                        mmi.ptMaxPosition.x = Math.Abs(rcWorkArea.left - rcMonitorArea.left);
+                        mmi.ptMaxPosition.y = Math.Abs(rcWorkArea.top - rcMonitorArea.top);
+                        mmi.ptMaxSize.x = Math.Abs(rcWorkArea.right - rcWorkArea.left);
+                        mmi.ptMaxSize.y = Math.Abs(rcWorkArea.bottom - rcWorkArea.top);
+                    }
+                }
+                System.Runtime.InteropServices.Marshal.StructureToPtr(mmi, lParam, true);
+            }
+            catch { }
+        }
+
+        private const int WM_GETMINMAXINFO = 0x0024;
+        private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr handle, uint flags);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int x;
+            public int y;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int left;
+            public int top;
+            public int right;
+            public int bottom;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct MINMAXINFO
+        {
+            public POINT ptReserved;
+            public POINT ptMaxSize;
+            public POINT ptMaxPosition;
+            public POINT ptMinTrackSize;
+            public POINT ptMaxTrackSize;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public int dwFlags;
+        }
+
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -163,7 +255,10 @@ namespace WhatsAppWebDesktop
         private void RestoreWindow()
         {
             this.Show();
-            this.WindowState = WindowState.Normal;
+            if (this.WindowState == WindowState.Minimized)
+            {
+                this.WindowState = WindowState.Normal;
+            }
             this.Activate();
 
             try
@@ -224,10 +319,12 @@ namespace WhatsAppWebDesktop
             if (WindowState == WindowState.Maximized)
             {
                 MaximizeIcon.Data = Geometry.Parse("M 2,0 L 10,0 L 10,8 M 0,2 L 8,2 L 8,10 L 0,10 Z");
+                if (MainRootGrid != null) MainRootGrid.Margin = new Thickness(6);
             }
             else
             {
                 MaximizeIcon.Data = Geometry.Parse("M 0,0 L 0,10 L 10,10 L 10,0 Z");
+                if (MainRootGrid != null) MainRootGrid.Margin = new Thickness(0);
             }
         }
 
@@ -320,7 +417,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.6");
+                                var currentVersion = new Version("1.0.7");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -435,7 +532,7 @@ namespace WhatsAppWebDesktop
         private void UpdateUnreadBadge(int count)
         {
             // Actualizar el título de la ventana y el texto visual
-            string version = "1.0.6"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string version = "1.0.7"; // Nota: release.ps1 reemplaza esto en tiempo de release
             string baseTitle = $"WhatsApp Lite v{version}";
             string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
             
@@ -540,6 +637,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 

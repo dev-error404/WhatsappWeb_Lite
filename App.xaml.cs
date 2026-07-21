@@ -88,14 +88,15 @@ namespace WhatsAppWebDesktop
         {
             try
             {
-                LogMessage("Connecting to running instance to send args: " + string.Join("|", args));
+                string payload = (args != null && args.Length > 0) ? string.Join("|", args) : "--show";
+                LogMessage("Connecting to running instance to send args: " + payload);
                 using (var client = new TcpClient())
                 {
                     client.Connect(IPAddress.Loopback, IpcPort);
                     using (var stream = client.GetStream())
                     using (var writer = new StreamWriter(stream, Encoding.UTF8))
                     {
-                        writer.Write(string.Join("|", args));
+                        writer.Write(payload);
                         writer.Flush();
                     }
                 }
@@ -139,18 +140,16 @@ namespace WhatsAppWebDesktop
                 {
                     string argsStr = reader.ReadToEnd();
                     LogMessage("Received args via TCP: " + argsStr);
-                    if (!string.IsNullOrEmpty(argsStr))
+                    System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        var mainWin = System.Windows.Application.Current.MainWindow as MainWindow;
+                        LogMessage("MainWindow found: " + (mainWin != null));
+                        if (mainWin != null)
                         {
-                            var mainWin = System.Windows.Application.Current.MainWindow as MainWindow;
-                            LogMessage("MainWindow found: " + (mainWin != null));
-                            if (mainWin != null)
-                            {
-                                mainWin.HandleArguments(argsStr.Split('|'));
-                            }
-                        }));
-                    }
+                            string[] parsedArgs = string.IsNullOrEmpty(argsStr) ? new string[] { "--show" } : argsStr.Split('|');
+                            mainWin.HandleArguments(parsedArgs);
+                        }
+                    }));
                 }
             }
             catch (Exception ex)
