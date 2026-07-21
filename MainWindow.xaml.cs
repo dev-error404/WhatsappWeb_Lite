@@ -320,7 +320,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.5");
+                                var currentVersion = new Version("1.0.6");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -435,7 +435,7 @@ namespace WhatsAppWebDesktop
         private void UpdateUnreadBadge(int count)
         {
             // Actualizar el título de la ventana y el texto visual
-            string version = "1.0.2"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string version = "1.0.6"; // Nota: release.ps1 reemplaza esto en tiempo de release
             string baseTitle = $"WhatsApp Lite v{version}";
             string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
             
@@ -502,6 +502,9 @@ namespace WhatsAppWebDesktop
 
         public void HandleArguments(string[] args)
         {
+            // Siempre restaurar la ventana cuando se ejecuta una segunda instancia o se invocan argumentos
+            RestoreWindow();
+
             string? whatsappUrl = args.FirstOrDefault(a => a.StartsWith("whatsapp://", StringComparison.OrdinalIgnoreCase));
             
             if (whatsappUrl != null)
@@ -514,7 +517,6 @@ namespace WhatsAppWebDesktop
 
                 if (WvWhatsApp?.CoreWebView2 != null)
                 {
-                    RestoreWindow();
                     WvWhatsApp.CoreWebView2.Navigate(webUrl);
                 }
                 else
@@ -538,6 +540,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 

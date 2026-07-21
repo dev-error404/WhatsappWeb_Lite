@@ -51,10 +51,7 @@ namespace WhatsAppWebDesktop
             if (!isNewInstance)
             {
                 LogMessage("This is not the first instance. Forwarding args and shutting down.");
-                if (e.Args.Length > 0)
-                {
-                    SendArgsToRunningInstance(e.Args);
-                }
+                SendArgsToRunningInstance(e.Args);
                 System.Windows.Application.Current.Shutdown();
                 return;
             }
