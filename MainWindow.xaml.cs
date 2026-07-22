@@ -27,8 +27,18 @@ namespace WhatsAppWebDesktop
             InitializeComponent();
             this.StateChanged += OnWindowStateChanged;
             this.Closing += OnWindowClosing;
+
+            // Inicializar la bandeja del sistema inmediatamente (antes de WebView2)
+            // para que el icono aparezca aunque la ventana no sea visible
+            InitializeTrayIcon();
             
             InitializeWebView();
+        }
+
+        /// <summary>Oculta la ventana a la bandeja del sistema sin cerrar la aplicación.</summary>
+        public void HideToTray()
+        {
+            this.Hide();
         }
 
         private async void InitializeWebView()
@@ -63,9 +73,7 @@ namespace WhatsAppWebDesktop
                     _pendingProtocolUrl = null;
                 }
                 WvWhatsApp.CoreWebView2.Navigate(targetUrl);
-
-                // Inicializar la bandeja del sistema
-                InitializeTrayIcon();
+                // Nota: InitializeTrayIcon() se llama en el constructor, no aquí
             }
             catch (Exception ex)
             {
@@ -107,6 +115,7 @@ namespace WhatsAppWebDesktop
 
         private void InitializeTrayIcon()
         {
+            if (_notifyIcon != null) return; // ya inicializado
             _notifyIcon = new SystemTray.NotifyIcon();
             
             // Cargar el icono desde los recursos incrustados
@@ -417,7 +426,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.7");
+                                var currentVersion = new Version("1.0.8");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -532,7 +541,7 @@ namespace WhatsAppWebDesktop
         private void UpdateUnreadBadge(int count)
         {
             // Actualizar el título de la ventana y el texto visual
-            string version = "1.0.7"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string version = "1.0.8"; // Nota: release.ps1 reemplaza esto en tiempo de release
             string baseTitle = $"WhatsApp Lite v{version}";
             string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
             
@@ -637,6 +646,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 

@@ -66,11 +66,20 @@ namespace WhatsAppWebDesktop
             // Iniciar la escucha de argumentos en segundo plano
             StartSocketServer();
 
-            // Si se inicia automáticamente con Windows, mantenemos la ventana oculta en segundo plano.
+            // Si se inicia automáticamente con Windows, mostramos la ventana brevemente para que
+            // WebView2 pueda adjuntarse al HWND e inicializar el tray icon, luego la ocultamos.
             if (e.Args.Contains("--startup"))
             {
                 LogMessage("App started in background mode (--startup).");
                 this.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                // Mostrar brevemente para que WebView2 e InitializeTrayIcon puedan ejecutarse
+                mainWindow.Show();
+                // Ocultar después de que el dispatcher procese la inicialización
+                mainWindow.Dispatcher.InvokeAsync(() =>
+                {
+                    mainWindow.HideToTray();
+                    LogMessage("Window hidden to tray after startup initialization.");
+                }, System.Windows.Threading.DispatcherPriority.Loaded);
             }
             else
             {
