@@ -27,6 +27,7 @@ namespace WhatsAppWebDesktop
             InitializeComponent();
             this.StateChanged += OnWindowStateChanged;
             this.Closing += OnWindowClosing;
+            this.IsVisibleChanged += OnIsVisibleChanged;
 
             // Inicializar la bandeja del sistema inmediatamente (antes de WebView2)
             // para que el icono aparezca aunque la ventana no sea visible
@@ -58,6 +59,7 @@ namespace WhatsAppWebDesktop
                 WvWhatsApp.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
                 WvWhatsApp.NavigationCompleted += OnNavigationCompleted;
                 WvWhatsApp.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
+                WvWhatsApp.CoreWebView2.PermissionRequested += OnPermissionRequested;
 
                 // Modificar el User-Agent para hacerse pasar por Google Chrome en Windows
                 WvWhatsApp.CoreWebView2.Settings.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -95,12 +97,46 @@ namespace WhatsAppWebDesktop
             }
         }
 
+        private void OnPermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs e)
+        {
+            if (e.PermissionKind == CoreWebView2PermissionKind.Microphone ||
+                e.PermissionKind == CoreWebView2PermissionKind.Camera ||
+                e.PermissionKind == CoreWebView2PermissionKind.Notifications)
+            {
+                e.State = CoreWebView2PermissionState.Allow;
+            }
+        }
+
         private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
         {
-            // Bloquea que el enlace se abra dentro de la app de WhatsApp y lo abre en el navegador web predeterminado
-            e.Handled = true;
             try
             {
+                // Permitir ventanas emergentes de WhatsApp (como llamadas popout /call/popout)
+                // para que se ejecuten dentro del entorno nativo de WebView2 con sesión y audio/video
+                bool isWhatsApp = false;
+                if (string.IsNullOrEmpty(e.Uri) || e.Uri.Equals("about:blank", StringComparison.OrdinalIgnoreCase))
+                {
+                    isWhatsApp = true;
+                }
+                else if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri))
+                {
+                    string host = uri.Host.ToLowerInvariant();
+                    if (host.EndsWith("whatsapp.com") || host.EndsWith("whatsapp.net"))
+                    {
+                        isWhatsApp = true;
+                    }
+                }
+
+                if (isWhatsApp)
+                {
+                    // Permitir que WebView2 abra la ventana emergente internamente
+                    e.Handled = false;
+                    return;
+                }
+
+                // Para cualquier otro enlace externo (youtube, webs, etc.), bloquear dentro de la app
+                // y abrirlo en el navegador web predeterminado del sistema (Chrome, Edge, etc.)
+                e.Handled = true;
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = e.Uri,
@@ -177,12 +213,58 @@ namespace WhatsAppWebDesktop
             catch { }
         }
 
+        private const int WM_GETMINMAXINFO = 0x0024;
+        private const int WM_NCHITTEST = 0x0084;
+        private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+        private const int HTLEFT = 10;
+        private const int HTRIGHT = 11;
+        private const int HTTOP = 12;
+        private const int HTTOPLEFT = 13;
+        private const int HTTOPRIGHT = 14;
+        private const int HTBOTTOM = 15;
+        private const int HTBOTTOMLEFT = 16;
+        private const int HTBOTTOMRIGHT = 17;
+
         private IntPtr WindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
             if (msg == WM_GETMINMAXINFO)
             {
                 WmGetMinMaxInfo(hwnd, lParam);
                 handled = true;
+            }
+            else if (msg == WM_NCHITTEST && this.WindowState == WindowState.Normal)
+            {
+                int x = unchecked((short)(lParam.ToInt64() & 0xFFFF));
+                int y = unchecked((short)((lParam.ToInt64() >> 16) & 0xFFFF));
+
+                var pt = PointFromScreen(new System.Windows.Point(x, y));
+                const double resizeBorder = 6.0;
+
+                // Esquina superior derecha (sobre el botón de cerrar para permitir redimensionar)
+                if (pt.X >= this.ActualWidth - resizeBorder && pt.Y <= resizeBorder)
+                {
+                    handled = true;
+                    return (IntPtr)HTTOPRIGHT;
+                }
+                // Esquina inferior izquierda
+                if (pt.X <= resizeBorder && pt.Y >= this.ActualHeight - resizeBorder)
+                {
+                    handled = true;
+                    return (IntPtr)HTBOTTOMLEFT;
+                }
+                // Esquina inferior derecha
+                if (pt.X >= this.ActualWidth - resizeBorder && pt.Y >= this.ActualHeight - resizeBorder)
+                {
+                    handled = true;
+                    return (IntPtr)HTBOTTOMRIGHT;
+                }
+                // Borde inferior
+                if (pt.Y >= this.ActualHeight - resizeBorder)
+                {
+                    handled = true;
+                    return (IntPtr)HTBOTTOM;
+                }
             }
             return IntPtr.Zero;
         }
@@ -212,9 +294,6 @@ namespace WhatsAppWebDesktop
             }
             catch { }
         }
-
-        private const int WM_GETMINMAXINFO = 0x0024;
-        private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern IntPtr MonitorFromWindow(IntPtr handle, uint flags);
@@ -261,7 +340,7 @@ namespace WhatsAppWebDesktop
         [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-        private void RestoreWindow()
+        private async void RestoreWindow()
         {
             this.Show();
             if (this.WindowState == WindowState.Minimized)
@@ -274,6 +353,44 @@ namespace WhatsAppWebDesktop
             {
                 var helper = new System.Windows.Interop.WindowInteropHelper(this);
                 SetForegroundWindow(helper.Handle);
+            }
+            catch { }
+
+            await ForceWebViewRedrawAsync();
+        }
+
+        private async void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (this.IsVisible)
+            {
+                await ForceWebViewRedrawAsync();
+            }
+        }
+
+        private async Task ForceWebViewRedrawAsync()
+        {
+            try
+            {
+                if (WvWhatsApp != null)
+                {
+                    await Task.Delay(50);
+
+                    try
+                    {
+                        WvWhatsApp.CoreWebView2?.Resume();
+                    }
+                    catch { }
+
+                    WvWhatsApp.InvalidateVisual();
+                    WvWhatsApp.UpdateLayout();
+
+                    // Micro-ajuste imperceptible de margen para forzar el evento WM_SIZE en el HWND de WebView2
+                    // Esto despierta inmediatamente el compositor de Chromium sin que el usuario tenga que agrandar la ventana
+                    var baseMargin = this.WindowState == WindowState.Maximized ? new Thickness(0) : new Thickness(2, 0, 2, 4);
+                    WvWhatsApp.Margin = new Thickness(baseMargin.Left, baseMargin.Top, baseMargin.Right, baseMargin.Bottom + 1);
+                    await Task.Delay(25);
+                    WvWhatsApp.Margin = baseMargin;
+                }
             }
             catch { }
         }
@@ -329,11 +446,13 @@ namespace WhatsAppWebDesktop
             {
                 MaximizeIcon.Data = Geometry.Parse("M 2,0 L 10,0 L 10,8 M 0,2 L 8,2 L 8,10 L 0,10 Z");
                 if (MainRootGrid != null) MainRootGrid.Margin = new Thickness(6);
+                if (WvWhatsApp != null) WvWhatsApp.Margin = new Thickness(0);
             }
             else
             {
                 MaximizeIcon.Data = Geometry.Parse("M 0,0 L 0,10 L 10,10 L 10,0 Z");
                 if (MainRootGrid != null) MainRootGrid.Margin = new Thickness(0);
+                if (WvWhatsApp != null) WvWhatsApp.Margin = new Thickness(2, 0, 2, 4);
             }
         }
 
@@ -426,7 +545,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.8");
+                                var currentVersion = new Version("1.0.9");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -541,7 +660,7 @@ namespace WhatsAppWebDesktop
         private void UpdateUnreadBadge(int count)
         {
             // Actualizar el título de la ventana y el texto visual
-            string version = "1.0.8"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string version = "1.0.9"; // Nota: release.ps1 reemplaza esto en tiempo de release
             string baseTitle = $"WhatsApp Lite v{version}";
             string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
             
@@ -646,6 +765,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 
