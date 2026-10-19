@@ -21,6 +21,7 @@ namespace WhatsAppWebDesktop
         private bool _isExiting = false;
         private bool _shownBalloonHelp = false;
         private string? _pendingProtocolUrl;
+        private CoreWebView2Environment? _env;
 
         public MainWindow()
         {
@@ -52,8 +53,8 @@ namespace WhatsAppWebDesktop
 
                 // Configurar opciones de entorno desactivando la aceleración por hardware (--disable-gpu)
                 var options = new CoreWebView2EnvironmentOptions("--disable-gpu");
-                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
-                await WvWhatsApp.EnsureCoreWebView2Async(env);
+                _env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
+                await WvWhatsApp.EnsureCoreWebView2Async(_env);
 
                 // Configurar eventos después de inicializar
                 WvWhatsApp.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
@@ -107,12 +108,12 @@ namespace WhatsAppWebDesktop
             }
         }
 
-        private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+        private async void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
         {
             try
             {
                 // Permitir ventanas emergentes de WhatsApp (como llamadas popout /call/popout)
-                // para que se ejecuten dentro del entorno nativo de WebView2 con sesión y audio/video
+                // para que se ejecuten dentro de nuestra ventana dedicada CallWindow
                 bool isWhatsApp = false;
                 if (string.IsNullOrEmpty(e.Uri) || e.Uri.Equals("about:blank", StringComparison.OrdinalIgnoreCase))
                 {
@@ -129,8 +130,55 @@ namespace WhatsAppWebDesktop
 
                 if (isWhatsApp)
                 {
-                    // Permitir que WebView2 abra la ventana emergente internamente
-                    e.Handled = false;
+                    var deferral = e.GetDeferral();
+                    try
+                    {
+                        var callWindow = new CallWindow();
+                        callWindow.Show();
+
+                        if (_env != null)
+                        {
+                            await callWindow.WebView.EnsureCoreWebView2Async(_env);
+                        }
+                        else
+                        {
+                            await callWindow.WebView.EnsureCoreWebView2Async();
+                        }
+
+                        var callCore = callWindow.WebView.CoreWebView2;
+
+                        if (WvWhatsApp?.CoreWebView2 != null)
+                        {
+                            callCore.Settings.UserAgent = WvWhatsApp.CoreWebView2.Settings.UserAgent;
+                        }
+
+                        // Conceder permisos de micrófono, cámara y notificaciones automáticamente
+                        callCore.PermissionRequested += (s, args) =>
+                        {
+                            if (args.PermissionKind == CoreWebView2PermissionKind.Microphone ||
+                                args.PermissionKind == CoreWebView2PermissionKind.Camera ||
+                                args.PermissionKind == CoreWebView2PermissionKind.Notifications)
+                            {
+                                args.State = CoreWebView2PermissionState.Allow;
+                            }
+                        };
+
+                        // Cerrar ventana automáticamente al finalizar la llamada
+                        callCore.WindowCloseRequested += (s, args) =>
+                        {
+                            callWindow.Close();
+                        };
+
+                        e.NewWindow = callCore;
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error al abrir la ventana de llamada: {ex.Message}", "Llamada WhatsApp", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    finally
+                    {
+                        deferral.Complete();
+                    }
                     return;
                 }
 
@@ -545,7 +593,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.0.9");
+                                var currentVersion = new Version("1.1.0");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -660,7 +708,7 @@ namespace WhatsAppWebDesktop
         private void UpdateUnreadBadge(int count)
         {
             // Actualizar el título de la ventana y el texto visual
-            string version = "1.0.9"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string version = "1.1.0"; // Nota: release.ps1 reemplaza esto en tiempo de release
             string baseTitle = $"WhatsApp Lite v{version}";
             string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
             
@@ -765,6 +813,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 
