@@ -23,6 +23,19 @@ namespace WhatsAppWebDesktop
         private string? _pendingProtocolUrl;
         private CoreWebView2Environment? _env;
 
+        private static void LogMessage(string message)
+        {
+            try
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string folder = Path.Combine(appData, "WhatsAppWebDesktop");
+                if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+                string path = Path.Combine(folder, "ipc.log");
+                File.AppendAllText(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}\n");
+            }
+            catch { }
+        }
+
         public MainWindow()
         {
             InitializeComponent();
@@ -51,8 +64,8 @@ namespace WhatsAppWebDesktop
                 string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 string userDataFolder = Path.Combine(appDataPath, "WhatsAppWebDesktop", "User Data");
 
-                // Configurar opciones de entorno desactivando la aceleración por hardware (--disable-gpu)
-                var options = new CoreWebView2EnvironmentOptions("--disable-gpu");
+                // Opciones de entorno de WebView2 (GPU habilitada para llamadas y WebRTC)
+                var options = new CoreWebView2EnvironmentOptions();
                 _env = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
                 await WvWhatsApp.EnsureCoreWebView2Async(_env);
 
@@ -130,6 +143,7 @@ namespace WhatsAppWebDesktop
 
                 if (isWhatsApp)
                 {
+                    LogMessage($"OnNewWindowRequested: WhatsApp popup detected for URI: {e.Uri}");
                     var deferral = e.GetDeferral();
                     try
                     {
@@ -152,9 +166,26 @@ namespace WhatsAppWebDesktop
                             callCore.Settings.UserAgent = WvWhatsApp.CoreWebView2.Settings.UserAgent;
                         }
 
+                        callCore.Settings.AreDevToolsEnabled = true;
+
+                        // Capturar errores de JS en ipc.log para diagnóstico
+                        await callCore.AddScriptToExecuteOnDocumentCreatedAsync(@"
+                            window.onerror = function(msg, url, line, col, error) {
+                                window.chrome.webview.postMessage('CallWindow JS Error: ' + msg + ' at ' + url + ':' + line);
+                            };
+                            window.onunhandledrejection = function(e) {
+                                window.chrome.webview.postMessage('CallWindow Rejection: ' + (e.reason ? (e.reason.stack || e.reason) : e));
+                            };
+                        ");
+                        callCore.WebMessageReceived += (s, args) =>
+                        {
+                            LogMessage(args.TryGetWebMessageAsString());
+                        };
+
                         // Conceder permisos de micrófono, cámara y notificaciones automáticamente
                         callCore.PermissionRequested += (s, args) =>
                         {
+                            LogMessage($"CallWindow PermissionRequested: {args.PermissionKind}");
                             if (args.PermissionKind == CoreWebView2PermissionKind.Microphone ||
                                 args.PermissionKind == CoreWebView2PermissionKind.Camera ||
                                 args.PermissionKind == CoreWebView2PermissionKind.Notifications)
@@ -166,13 +197,23 @@ namespace WhatsAppWebDesktop
                         // Cerrar ventana automáticamente al finalizar la llamada
                         callCore.WindowCloseRequested += (s, args) =>
                         {
+                            LogMessage("CallWindow WindowCloseRequested: Closing call window");
                             callWindow.Close();
                         };
 
                         e.NewWindow = callCore;
+                        e.Handled = true;
+
+                        // Si e.Uri tiene la ruta de la llamada (/call/popout), navegar directamente
+                        if (!string.IsNullOrEmpty(e.Uri) && !e.Uri.Equals("about:blank", StringComparison.OrdinalIgnoreCase))
+                        {
+                            LogMessage($"CallWindow Navigating to: {e.Uri}");
+                            callCore.Navigate(e.Uri);
+                        }
                     }
                     catch (Exception ex)
                     {
+                        LogMessage($"Error opening call window: {ex.Message}");
                         MessageBox.Show($"Error al abrir la ventana de llamada: {ex.Message}", "Llamada WhatsApp", MessageBoxButton.OK, MessageBoxImage.Warning);
                     }
                     finally
@@ -593,7 +634,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.1.0");
+                                var currentVersion = new Version("1.1.1");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -708,7 +749,7 @@ namespace WhatsAppWebDesktop
         private void UpdateUnreadBadge(int count)
         {
             // Actualizar el título de la ventana y el texto visual
-            string version = "1.1.0"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string version = "1.1.1"; // Nota: release.ps1 reemplaza esto en tiempo de release
             string baseTitle = $"WhatsApp Lite v{version}";
             string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
             
@@ -813,6 +854,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 

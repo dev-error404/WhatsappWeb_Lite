@@ -9,6 +9,7 @@
         Background="#111b21"
         Icon="logo-whatsapp-png-46068.png">
     <Grid Background="#111b21">
-        <wv2:WebView2 x:Name="WvCall" />
+        <wv2:WebView2 x:Name="WvCall" 
+                      DefaultBackgroundColor="#111b21" />
     </Grid>
 </Window>
