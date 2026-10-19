@@ -201,15 +201,17 @@ namespace WhatsAppWebDesktop
                             callWindow.Close();
                         };
 
-                        e.NewWindow = callCore;
-                        e.Handled = true;
-
-                        // Si e.Uri tiene la ruta de la llamada (/call/popout), navegar directamente
-                        if (!string.IsNullOrEmpty(e.Uri) && !e.Uri.Equals("about:blank", StringComparison.OrdinalIgnoreCase))
+                        callCore.NavigationStarting += (s, args) =>
                         {
-                            LogMessage($"CallWindow Navigating to: {e.Uri}");
-                            callCore.Navigate(e.Uri);
-                        }
+                            LogMessage($"CallWindow NavigationStarting: {args.Uri}");
+                        };
+                        callCore.NavigationCompleted += (s, args) =>
+                        {
+                            LogMessage($"CallWindow NavigationCompleted: Success={args.IsSuccess}, Status={args.WebErrorStatus}");
+                        };
+
+                        // Asignar el nuevo CoreWebView2 para que Chromium preserve window.opener y el contexto de la llamada
+                        e.NewWindow = callCore;
                     }
                     catch (Exception ex)
                     {
@@ -634,7 +636,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.1.1");
+                                var currentVersion = new Version("1.1.2");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -749,7 +751,7 @@ namespace WhatsAppWebDesktop
         private void UpdateUnreadBadge(int count)
         {
             // Actualizar el título de la ventana y el texto visual
-            string version = "1.1.1"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string version = "1.1.2"; // Nota: release.ps1 reemplaza esto en tiempo de release
             string baseTitle = $"WhatsApp Lite v{version}";
             string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
             
@@ -854,6 +856,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 
