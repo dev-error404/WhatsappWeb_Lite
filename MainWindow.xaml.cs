@@ -616,6 +616,51 @@ namespace WhatsAppWebDesktop
             }
         }
 
+        private async void OnLogoutClick(object sender, RoutedEventArgs e)
+        {
+            PopSettings.IsOpen = false;
+
+            var result = MessageBox.Show(
+                "¿Deseas cerrar sesión en WhatsApp Lite?\n\nEsto eliminará la sesión guardada y los datos locales de tu cuenta para que puedas volver a vincular tu WhatsApp mediante el código QR.",
+                "Cerrar sesión",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                LoadingPanel.Visibility = Visibility.Visible;
+                WvWhatsApp.Visibility = Visibility.Collapsed;
+                TxtLoadingStatus.Text = "Cerrando sesión y limpiando datos...";
+
+                if (WvWhatsApp?.CoreWebView2 != null)
+                {
+                    // Limpiar todas las cookies, almacenamiento local, IndexedDB y caché del perfil
+                    await WvWhatsApp.CoreWebView2.Profile.ClearBrowsingDataAsync();
+
+                    // Limpiar almacenamiento en el contexto de JavaScript de la página
+                    try
+                    {
+                        await WvWhatsApp.CoreWebView2.ExecuteScriptAsync("try { window.localStorage.clear(); window.sessionStorage.clear(); } catch(e){}");
+                    }
+                    catch { }
+
+                    // Limpiar badge y título de mensajes no leídos
+                    UpdateUnreadBadge(0);
+
+                    // Navegar limpiamente a WhatsApp Web para mostrar el código QR
+                    WvWhatsApp.CoreWebView2.Navigate("https://web.whatsapp.com/");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ocurrió un error al cerrar sesión: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                LoadingPanel.Visibility = Visibility.Collapsed;
+                WvWhatsApp.Visibility = Visibility.Visible;
+            }
+        }
+
         private async Task CheckForUpdatesAsync()
         {
             try
@@ -636,7 +681,7 @@ namespace WhatsAppWebDesktop
                             string cleanTag = release.tag_name.TrimStart('v', 'V', ' ');
                             if (Version.TryParse(cleanTag, out Version? latestVersion))
                             {
-                                var currentVersion = new Version("1.1.2");
+                                var currentVersion = new Version("1.1.3");
                                 if (latestVersion > currentVersion)
                                 {
                                     var asset = release.assets.FirstOrDefault(a => a.name.Equals("WhatsAppWebSetup.exe", StringComparison.OrdinalIgnoreCase));
@@ -751,7 +796,7 @@ namespace WhatsAppWebDesktop
         private void UpdateUnreadBadge(int count)
         {
             // Actualizar el título de la ventana y el texto visual
-            string version = "1.1.2"; // Nota: release.ps1 reemplaza esto en tiempo de release
+            string version = "1.1.3"; // Nota: release.ps1 reemplaza esto en tiempo de release
             string baseTitle = $"WhatsApp Lite v{version}";
             string displayTitle = count > 0 ? $"({count}) {baseTitle}" : baseTitle;
             
@@ -856,6 +901,7 @@ namespace WhatsAppWebDesktop
         public string browser_download_url { get; set; } = "";
     }
 }
+
 
 
 
